@@ -2,39 +2,53 @@
 #include <QtWidgets>
 #include <QCryptographicHash>
 
-static const QString BASE58_ALPHABET = "0123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+static const QString BASE58_ALPHABET =
+    "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
-QString base58Encode(const QByteArray &input) {
-    // Copy input and remove leading zeros
-    QByteArray b = input;
+QString base58Encode(const QByteArray &input)
+{
+    if (input.isEmpty())
+        return QString();
+
+    // Count leading zero bytes.
     int zeros = 0;
-    while (zeros < b.size() && static_cast<unsigned char>(b[zeros]) == 0)
+    while (zeros < input.size() &&
+           static_cast<unsigned char>(input.at(zeros)) == 0)
+    {
         ++zeros;
-
-    QByteArray result;
-
-    // Process bytes
-    while (!b.isEmpty() && b != QByteArray(b.size(), '\0')) {
-        int remainder = 0;
-        QByteArray newB;
-        for (int i = 0; i < b.size(); ++i) {
-            int val = (remainder << 8) + static_cast<unsigned char>(b[i]);
-            int q = val / 58;
-            remainder = val % 58;
-            if (!newB.isEmpty() || q != 0)
-                newB.append(static_cast<char>(q));
-        }
-        result.prepend(BASE58_ALPHABET[remainder].toLatin1());
-        b = newB;
     }
 
-    // Add leading '1's
-    if (zeros > 0)
-        result.prepend(QByteArray(zeros, '1'));
+    // Copy the significant bytes.
+    QByteArray num = input.mid(zeros);
+    QByteArray encoded;
 
-    return QString::fromUtf8(result);
+    while (!num.isEmpty()) {
+        int remainder = 0;
+        QByteArray quotient;
+        quotient.reserve(num.size());
+
+        for (int i = 0; i < num.size(); ++i) {
+            int value = (remainder << 8) |
+                        static_cast<unsigned char>(num.at(i));
+
+            int digit = value / 58;
+            remainder = value % 58;
+
+            // Skip leading zeroes in the quotient.
+            if (!quotient.isEmpty() || digit != 0)
+                quotient.append(static_cast<char>(digit));
+        }
+
+        encoded.prepend(BASE58_ALPHABET[remainder].toLatin1());
+        num = quotient;
+    }
+
+    // One leading zero byte becomes one '1'.
+    while (zeros-- > 0)
+        encoded.prepend('1');
+
+    return QString::fromLatin1(encoded.constData(), encoded.size());
 }
-
 
 
 
@@ -92,12 +106,14 @@ public:
         connect(hexEdit, &QLineEdit::returnPressed, btn, &QPushButton::click);
 
 
-        QByteArray privKey32 = QByteArray::fromHex("78789e1b82c793fef0bb9861e80ea4f344b34e34ce980ea4a7a35bde83f3b0e1");
+        QByteArray privKey32 = QByteArray::fromHex("49396dce3b65ce0fade0488184de797ba8a960fd48f3b4578f5268d5c524949b");
         QByteArray payload;
         payload.append(char(0x9E));     // Dogecoin version byte
         payload.append(privKey32);
         QByteArray checksum = QCryptographicHash::hash(QCryptographicHash::hash(payload, QCryptographicHash::Sha256), QCryptographicHash::Sha256).left(4);
         payload.append(checksum);
+qDebug() << "testc " << checksum.toHex();
+        qDebug() << "test " << payload.toHex();
 
         QString wif = base58Encode(payload);
         qDebug() << "WIF (uncompressed):" << wif;
